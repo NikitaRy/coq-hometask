@@ -8,7 +8,6 @@ Require Import List.
 Import ListNotations.
 
 From hahn Require Import HahnBase.
-Set Nested Proof Allowed.
 
 (* Type of binary operators *)
 Inductive bop : Type :=
@@ -177,6 +176,9 @@ Inductive eval : expr -> state Z -> Z -> Prop :=
 where "[| e |] st => z" := (eval e st z). 
 
 #[export] Hint Constructors eval : core.
+
+Set Nested Proofs Allowed.
+
 
 Require Import Coq.Program.Equality.
 
