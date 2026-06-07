@@ -81,8 +81,8 @@ Section S.
     + intros H. dependent destruction H.
       - constructor.
       - apply st_binds_tl.
-      { assumption. }
-      { apply st_binds_tl; assumption. }
+      * assumption.
+      * apply st_binds_tl; assumption.
   Qed.
   
   Lemma update_same (st : state) (x1 x2 : id) (n1 m : A)
