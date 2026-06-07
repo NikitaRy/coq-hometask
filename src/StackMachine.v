@@ -192,7 +192,6 @@ Module StraightLine.
   | Bop op e1 e2 => compile_expr e1 ++ compile_expr e2 ++ [B op]
   end.
   
-  (* Partial correctness of expression compiler *)
   Lemma compiled_expr_correct_cont
         (e : expr) (st : state Z) (s i o : list Z) (n : Z)
         (p : prog) (c : conf)
