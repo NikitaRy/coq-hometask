@@ -144,31 +144,32 @@ Ltac seq_apply :=
 
 Module SmokeTest.
 
-  (* Associativity of sequential composition *)
   Lemma seq_assoc (s1 s2 s3 : stmt) :
     ((s1 ;; s2) ;; s3) ~~~ (s1 ;; (s2 ;; s3)).
-  Proof. unfold "~~~". intros. split; intro.
-    + dependent destruction H. dependent destruction H.
-    econstructor. eassumption. econstructor; eassumption.
-    + dependent destruction H. dependent destruction H0.
-    econstructor. econstructor; eassumption. eassumption.
+  Proof.
+    unfold "~~~". intros c c'. split; intros H.
+    - inversion H; subst. inversion STEP1; subst.
+      econstructor; [eassumption | econstructor; eassumption].
+    - inversion H; subst. inversion STEP2; subst.
+      econstructor; [econstructor; eassumption | eassumption].
   Qed. 
 
   #[export] Hint Resolve SmokeTest.seq_assoc : core.
 
-  (* One-step unfolding *)
   Lemma while_unfolds (e : expr) (s : stmt) :
     (WHILE e DO s END) ~~~ (COND e THEN s ;; WHILE e DO s END ELSE SKIP END).
-  Proof. unfold "~~~". intros. split; intro.
-    + dependent destruction H.
-      - econstructor; try assumption. econstructor; eassumption.
-      - apply bs_If_False. assumption. econstructor.
-    + dependent destruction H. dependent destruction H.
-      - eapply bs_While_True; try eassumption.
-      - dependent destruction H. eapply bs_While_False; try eassumption.
+  Proof.
+    unfold "~~~". intros c c'. split; intros H.
+    - inversion H; subst.
+      + apply bs_If_True; [assumption | econstructor; eassumption].
+      + apply bs_If_False; [assumption | constructor].
+    - inversion H; subst.
+      + inversion STEP; subst.
+        eapply bs_While_True; eassumption.
+      + inversion STEP; subst.
+        apply bs_While_False. assumption.
   Qed.
       
-  (* Terminating loop invariant *)
   Lemma while_false (e : expr) (s : stmt) (st : state Z)
         (i o : list Z) (c : conf)
         (EXE : c == WHILE e DO s END ==> (st, i, o)) :
@@ -182,7 +183,6 @@ Module SmokeTest.
   Proof. dependent induction H.
     eapply IHbs_int2. eexists. inversion CVAL. Qed.
 
-  (* Big-step semantics does not distinguish non-termination from stuckness *)
   Lemma loop_eq_undefined :
     (WHILE (Nat 1) DO SKIP END) ~~~
     (COND (Nat 3) THEN SKIP ELSE SKIP END).
@@ -190,70 +190,79 @@ Module SmokeTest.
     + exfalso. eapply endless_loop_unreachable. eassumption.
     + dependent destruction H; dependent destruction CVAL. Qed.
   
-  (* Loops with equivalent bodies are equivalent *)
   Lemma while_eq (e : expr) (s1 s2 : stmt)
         (EQ : s1 ~~~ s2) :
     WHILE e DO s1 END ~~~ WHILE e DO s2 END.
-  Proof. unfold "~~~". intros. split; intros.
-   + dependent induction H. 
-   eapply bs_While_True. eassumption. 
-   apply EQ. eassumption.
-   eapply IHbs_int2; eauto.
-   eapply bs_While_False. assumption.
-   + dependent induction H. 
-   eapply bs_While_True. eassumption. 
-   apply EQ. eassumption.
-   eapply IHbs_int2; eauto.
-   eapply bs_While_False. assumption. Qed.
+  Proof.
+    unfold "~~~". intros c c'.
+    split; intros H_exe.
+    - remember (WHILE e DO s1 END) as loop.
+      induction H_exe; inversion Heqloop; subst.
+      + eapply bs_While_True; [eassumption | | ].
+        * apply EQ. eassumption.
+        * apply IHH_exe2. reflexivity.
+      + apply bs_While_False. assumption.
+    - remember (WHILE e DO s2 END) as loop.
+      induction H_exe; inversion Heqloop; subst.
+      + eapply bs_While_True; [eassumption | | ].
+        * apply EQ. eassumption.
+        * apply IHH_exe2. reflexivity.
+      + apply bs_While_False. assumption.
+  Qed.
   
-  (* Loops with the constant true condition don't terminate *)
-  (* Exercise 4.8 from Winskel's *)
   Lemma while_true_undefined c s c' :
     ~ c == WHILE (Nat 1) DO s END ==> c'.
-  Proof. intro. eapply endless_loop_unreachable. eassumption. Qed.
+  Proof.
+    intro H. eapply endless_loop_unreachable; eassumption.
+  Qed.
   
 End SmokeTest.
 
 (* Semantic equivalence is a congruence *)
 Lemma eq_congruence_seq_r (s s1 s2 : stmt) (EQ : s1 ~~~ s2) :
   (s  ;; s1) ~~~ (s  ;; s2).
-Proof. unfold "~~~". intros. split; intros; dependent destruction H.
-  + econstructor. eassumption. apply EQ. assumption.
-  + econstructor. eassumption. apply EQ. assumption. Qed.
+Proof.
+  unfold "~~~" in *. intros c c'. split; intros H; inversion H; subst.
+  - econstructor; [eassumption | apply EQ; assumption].
+  - econstructor; [eassumption | apply EQ; assumption].
+Qed.
 
 Lemma eq_congruence_seq_l (s s1 s2 : stmt) (EQ : s1 ~~~ s2) :
   (s1 ;; s) ~~~ (s2 ;; s).
-Proof. unfold "~~~". intros. split; intros; dependent destruction H.
-  + econstructor. apply EQ in H. eassumption. assumption.
-  + econstructor. apply EQ in H. eassumption. assumption. Qed.
+Proof.
+  unfold "~~~" in *. intros c c'. split; intros H; inversion H; subst.
+  - econstructor; [apply EQ; eassumption | assumption].
+  - econstructor; [apply EQ; eassumption | assumption].
+Qed.
 
 Lemma eq_congruence_cond_else
       (e : expr) (s s1 s2 : stmt) (EQ : s1 ~~~ s2) :
   COND e THEN s  ELSE s1 END ~~~ COND e THEN s  ELSE s2 END.
-Proof. unfold "~~~". intros. split; intros; dependent destruction H.
-  + apply bs_If_True. eauto. apply H.
-  + apply bs_If_False. eauto. apply EQ in H. auto.
-  + apply bs_If_True. eauto. apply H.
-  + apply bs_If_False. eauto. apply EQ in H. auto. Qed. 
+Proof.
+  unfold "~~~" in *. intros c c'. split; intros H; inversion H; subst.
+  - apply bs_If_True; [assumption | assumption].
+  - apply bs_If_False; [assumption | apply EQ; assumption].
+  - apply bs_If_True; [assumption | assumption].
+  - apply bs_If_False; [assumption | apply EQ; assumption].
+Qed. 
 
 Lemma eq_congruence_cond_then
       (e : expr) (s s1 s2 : stmt) (EQ : s1 ~~~ s2) :
   COND e THEN s1 ELSE s END ~~~ COND e THEN s2 ELSE s END.
-Proof. unfold "~~~". intros. split; intros; dependent destruction H.
-  + apply bs_If_True. eauto. apply EQ in H. auto. 
-  + apply bs_If_False. eauto. auto.
-  + apply bs_If_True. eauto. apply EQ in H. auto.
-  + apply bs_If_False. eauto. auto. Qed. 
+Proof.
+  unfold "~~~" in *. intros c c'. split; intros H; inversion H; subst.
+  - apply bs_If_True; [assumption | apply EQ; assumption].
+  - apply bs_If_False; [assumption | assumption].
+  - apply bs_If_True; [assumption | apply EQ; assumption].
+  - apply bs_If_False; [assumption | assumption].
+Qed. 
 
 Lemma eq_congruence_while
       (e : expr) (s1 s2 : stmt) (EQ : s1 ~~~ s2) :
   WHILE e DO s1 END ~~~ WHILE e DO s2 END.
-Proof. unfold "~~~". intros. split; intros; dependent induction H.
-  + eapply bs_While_True. assumption. apply EQ in H. eassumption. eapply IHbs_int2.
-  eassumption. reflexivity.
-  + eapply bs_While_False. assumption.
-  + eapply bs_While_True. assumption. apply EQ in H. eassumption. eapply IHbs_int2. eassumption. reflexivity.
-  + eapply bs_While_False. assumption. Qed.
+Proof.
+  apply SmokeTest.while_eq. assumption.
+Qed.
 
 Lemma eq_congruence (e : expr) (s s1 s2 : stmt) (EQ : s1 ~~~ s2) :
   ((s  ;; s1) ~~~ (s  ;; s2)) /\
@@ -333,14 +342,11 @@ Proof. dependent induction H.
     - eapply bs_While_False. eapply variable_relevance; eauto.
   Admitted.
   
-(* Contextual equivalence is equivalent to the semantic one *)
-(* TODO: no longer needed *)
 Ltac by_eq_congruence e s s1 s2 H :=
   remember (eq_congruence e s s1 s2 H) as Congruence;
   match goal with H: Congruence = _ |- _ => clear H end;
   repeat (match goal with H: _ /\ _ |- _ => inversion_clear H end); assumption.
-      
-(* Small-step semantics *)
+
 Module SmallStep.
   
   Reserved Notation "c1 '--' s '-->' c2" (at level 0).
@@ -402,7 +408,7 @@ Module SmallStep.
   Lemma ss_bs_base (s : stmt) (c c' : conf) (STEP : c -- s --> (None, c')) :
     c == s ==> c'.
   Proof.
-    inversion STEP; crush. 
+    inversion STEP; subst; constructor; assumption.
   Qed. 
 
   Lemma ss_ss_composition (c c' c'' : conf) (s1 s2 : stmt)
@@ -414,7 +420,7 @@ Module SmallStep.
       + apply (ss_int_Step _ (s' ;; s2) _ c'0). constructor. crush.
         apply IHSTEP1. crush.
   Qed.
-  
+
   Lemma ss_bs_step (c c' c'' : conf) (s s' : stmt)
         (STEP : c -- s --> (Some s', c'))
         (EXEC : c' == s' ==> c'') :
@@ -429,28 +435,35 @@ Module SmallStep.
       + apply SmokeTest.while_unfolds. eauto.
   Qed.
 
+  Lemma bs_to_ss (s : stmt) (c c' : conf) (H : c == s ==> c') : c -- s -->> c'.
+  Proof.
+    induction H.
+    - constructor. constructor.
+    - constructor. econstructor. eassumption.
+    - constructor. econstructor.
+    - constructor. econstructor. eassumption.
+    - eapply ss_ss_composition; eassumption.
+    - eapply ss_int_Step; [constructor; eassumption | eassumption].
+    - eapply ss_int_Step; [constructor; eassumption | eassumption].
+    - eapply ss_int_Step; [constructor | ].
+      eapply ss_int_Step; [constructor; eassumption | ].
+      eapply ss_ss_composition; [apply IHbs_int1 | apply IHbs_int2].
+    - eapply ss_int_Step; [constructor | ].
+      eapply ss_int_Step; [constructor; eassumption | ].
+      constructor. constructor.
+  Qed.
+
+  Lemma ss_to_bs (s : stmt) (c c' : conf) (H : c -- s -->> c') : c == s ==> c'.
+  Proof.
+    induction H.
+    - eapply ss_bs_base. assumption.
+    - eapply ss_bs_step; eassumption.
+  Qed.
+
   Theorem bs_ss_eq (s : stmt) (c c' : conf) :
     c == s ==> c' <-> c -- s -->> c'.
   Proof. 
-    split; intros.
-    + dependent induction s.
-      1-4: constructor; dependent destruction H; econstructor; eauto.
-      - dependent destruction H. 
-      eapply ss_ss_composition. 
-      apply IHs1. eauto. apply IHs2. eauto.
-      - dependent destruction H.
-        * eapply ss_int_Step. eapply ss_If_True. eauto. eauto.
-        * eapply ss_int_Step. eapply ss_If_False. eauto. eauto.
-      - dependent induction H; 
-        eapply ss_int_Step; try eapply ss_While.
-        * eapply ss_int_Step. eapply ss_If_True. auto.
-        eapply ss_ss_composition. eapply IHs. eauto.
-        eapply IHbs_int2. auto. auto.
-        * eapply ss_int_Step. eapply ss_If_False. auto.
-        constructor. constructor.
-    + dependent induction H.
-      - eapply ss_bs_base. auto.
-      - eapply ss_bs_step; eauto.
+    split; [apply bs_to_ss | apply ss_to_bs].
   Qed.
   
 End SmallStep.
@@ -682,7 +695,3 @@ Proof. dependent destruction STEP. generalize dependent k.
 Lemma bs_int_to_cps_int st i o c' s (EXEC : (st, i, o) == s ==> c') :
   KEmpty |- (st, i, o) -- !s --> c'.
 Proof. eapply bs_int_to_cps_int_cont; eauto. constructor. constructor. Qed.
-
-(* Lemma cps_stmt_assoc s1 s2 s3 s (c c' : conf) : *)
-(*   (! (s1 ;; s2 ;; s3)) |- c -- ! (s) --> (c') <-> *)
-(*   (! ((s1 ;; s2) ;; s3)) |- c -- ! (s) --> (c'). *)
